@@ -1,5 +1,11 @@
+import os
+
 import streamlit as st
-from utils import run_agent_sync
+from dotenv import load_dotenv
+
+from utils import run_agent_sync, format_mcp_error
+
+load_dotenv()
 
 st.set_page_config(page_title="MCP POC", page_icon="🤖", layout="wide")
 
@@ -21,10 +27,23 @@ st.sidebar.header("Configuration")
 # API Key input
 google_api_key = st.sidebar.text_input("Google API Key", type="password")
 
+if "composio_api_key_input" not in st.session_state:
+    st.session_state.composio_api_key_input = os.environ.get("COMPOSIO_API_KEY", "")
+st.sidebar.text_input(
+    "Composio API Key (required for Composio MCP URLs)",
+    type="password",
+    key="composio_api_key_input",
+    help="Project API key from Composio dashboard. Sent as x-api-key on each MCP request. "
+    "You can also set COMPOSIO_API_KEY in a .env file in this folder.",
+)
+composio_api_key = (st.session_state.composio_api_key_input or "").strip() or None
+
 # Pipedream URLs
-st.sidebar.subheader("Pipedream URLs")
-youtube_pipedream_url = st.sidebar.text_input("YouTube URL (Required)", 
-    placeholder="Enter your Pipedream YouTube URL")
+st.sidebar.subheader("MCP server URLs")
+youtube_pipedream_url = st.sidebar.text_input(
+    "YouTube MCP URL (Required)",
+    placeholder="HTTPS MCP URL (Pipedream or Composio)",
+)
 
 # Secondary tool selection
 secondary_tool = st.sidebar.radio(
@@ -34,12 +53,10 @@ secondary_tool = st.sidebar.radio(
 
 # Secondary tool URL input
 if secondary_tool == "Drive":
-    drive_pipedream_url = st.sidebar.text_input("Drive URL", 
-        placeholder="Enter your Pipedream Drive URL")
+    drive_pipedream_url = st.sidebar.text_input("Drive MCP URL", placeholder="HTTPS MCP URL")
     notion_pipedream_url = None
 else:
-    notion_pipedream_url = st.sidebar.text_input("Notion URL", 
-        placeholder="Enter your Pipedream Notion URL")
+    notion_pipedream_url = st.sidebar.text_input("Notion MCP URL", placeholder="HTTPS MCP URL")
     drive_pipedream_url = None
 
 # Quick guide before goal input
@@ -128,8 +145,9 @@ if st.button("Generate Learning Path", type="primary", disabled=st.session_state
                 youtube_pipedream_url=youtube_pipedream_url,
                 drive_pipedream_url=drive_pipedream_url,
                 notion_pipedream_url=notion_pipedream_url,
+                composio_api_key=composio_api_key,
                 user_goal=user_goal,
-                progress_callback=update_progress
+                progress_callback=update_progress,
             )
             
             # Display results
@@ -143,6 +161,11 @@ if st.button("Generate Learning Path", type="primary", disabled=st.session_state
                 st.error("No results were generated. Please try again.")
                 st.session_state.is_generating = False
         except Exception as e:
-            st.error(f"An error occurred: {str(e)}")
-            st.error("Please check your API keys and URLs, and try again.")
+            st.error("Something went wrong while connecting to MCP or running the agent.")
+            with st.expander("Full error (for debugging)"):
+                st.code(format_mcp_error(e), language="text")
+            st.caption(
+                "Use **HTTPS MCP URLs** only (not `npx ...`). For Composio, add your project API key "
+                "in the sidebar or set COMPOSIO_API_KEY in `.env` ([docs](https://v3.docs.composio.dev/reference/authentication))."
+            )
             st.session_state.is_generating = False
